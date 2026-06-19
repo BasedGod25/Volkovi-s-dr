@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Админ — Артём & Катя</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0d0d12;
+  color: #e0d8f0;
+  font-family: 'Segoe UI', sans-serif;
+  min-height: 100vh;
+}
+.header {
+  background: #13111f;
+  border-bottom: 1px solid #2a2a3a;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.header-title { font-size: 20px; font-weight: 700; color: #d4a853; }
+.header-status { font-size: 13px; color: #666; }
+.badge {
+  background: #1e1e2e;
+  border: 1px solid #333;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #aaa;
+}
+.badge span { color: #d4a853; font-weight: bold; }
+
+.tabs {
+  display: flex;
+  background: #13111f;
+  border-bottom: 1px solid #1e1e2e;
+  padding: 0 16px;
+}
+.tab {
+  padding: 14px 20px;
+  cursor: pointer;
+  font-size: 15px;
+  color: #666;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  user-select: none;
+}
+.tab:hover { color: #aaa; }
+.tab.active { color: #d4a853; border-bottom-color: #d4a853; }
+
+.content { padding: 24px; max-width: 1100px; margin: 0 auto; }
+
+.section-title {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #555;
+  margin-bottom: 16px;
+}
+
+.card {
+  background: #13111f;
+  border: 1px solid #1e1e2e;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+/* BUTTONS */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: #fff;
+}
+.btn:disabled { opacity: 0.4; cursor: default; }
+.btn-primary { background: #4a6fff; }
+.btn-primary:hover:not(:disabled) { background: #5a7fff; }
+.btn-success { background: #22a855; }
+.btn-success:hover:not(:disabled) { background: #28c060; }
+.btn-warning { background: #d48a20; }
+.btn-warning:hover:not(:disabled) { background: #e09930; }
+.btn-danger  { background: #d42a2a; }
+.btn-danger:hover:not(:disabled)  { background: #e03030; }
+.btn-purple  { background: #7c4dcc; }
+.btn-purple:hover:not(:disabled)  { background: #8a55dd; }
+.btn-sm { padding: 6px 14px; font-size: 13px; }
+.btn-outline {
+  background: transparent;
+  border: 1px solid #333;
+  color: #aaa;
+}
+.btn-outline:hover { border-color: #555; color: #ddd; }
+.btn-outline.active-answer { border-color: #d4a853; color: #d4a853; }
+
+/* PHOTO GRID */
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.photo-card {
+  border: 2px solid #1e1e2e;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.photo-card:hover { border-color: #4a6fff; }
+.photo-card.selected { border-color: #d4a853; }
+.photo-card img { width: 100%; height: 90px; object-fit: cover; display: block; }
+.photo-card-num {
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  background: #0d0d12;
+  color: #aaa;
+}
+.photo-card.selected .photo-card-num { color: #d4a853; }
+.photo-answer-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: bold;
+}
+.badge-artem { background: rgba(74,158,255,0.85); }
+.badge-katya  { background: rgba(255,107,157,0.85); }
+.badge-both   { background: rgba(167,139,250,0.85); }
+
+/* CONTROLS */
+.r1-controls {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.vote-counts-display {
+  display: flex;
+  gap: 20px;
+  padding: 14px 20px;
+  background: #0d0d12;
+  border-radius: 10px;
+  font-size: 15px;
+}
+.vc-artem { color: #4a9eff; }
+.vc-katya { color: #ff6b9d; }
+.vc-both  { color: #a78bfa; }
+
+/* STATUS PILL */
+.status-pill {
+  display: inline-block;
+  padding: 3px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  letter-spacing: 1px;
+}
+.s-idle     { background: #1e1e1e; color: #555; }
+.s-showing  { background: #1a2e4a; color: #4a9eff; }
+.s-voting   { background: #2a1a2e; color: #a78bfa; }
+.s-revealed { background: #2a1a0a; color: #d4a853; }
+.s-reading  { background: #1a2a1a; color: #4ade80; }
+.s-collecting { background: #1a2e1a; color: #86efac; }
+
+/* Q2 LIST */
+.q2-list { display: flex; flex-direction: column; gap: 10px; }
+.q2-item {
+  border: 1px solid #1e1e2e;
+  border-radius: 10px;
+  padding: 14px 18px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.q2-item:hover { border-color: #4a6fff; }
+.q2-item.selected { border-color: #d4a853; background: rgba(212,168,83,0.05); }
+.q2-item-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
+.q2-num { font-size: 20px; font-weight: 700; color: #d4a853; min-width: 32px; }
+.q2-reader { font-size: 13px; color: #7c4dcc; }
+.q2-text { font-size: 13px; color: #555; line-height: 1.4; }
+.q2-accepted { font-size: 13px; color: #4ade80; margin-top: 4px; }
+
+/* READER SELECT */
+.reader-select-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.select-input {
+  background: #0d0d12;
+  border: 1px solid #333;
+  color: #e0d8f0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  min-width: 200px;
+}
+
+/* EDITOR */
+.editor-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.answer-choice-row { display: flex; gap: 8px; margin-top: 8px; }
+.accepted-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  background: #1e2e1e;
+  border: 1px solid #2a4a2a;
+  border-radius: 20px;
+  font-size: 13px;
+  color: #86efac;
+}
+.tag-remove {
+  cursor: pointer;
+  color: #444;
+  font-size: 16px;
+  line-height: 1;
+}
+.tag-remove:hover { color: #f87171; }
+.add-tag-row { display: flex; gap: 8px; margin-top: 8px; }
+.text-input {
+  background: #0d0d12;
+  border: 1px solid #333;
+  color: #e0d8f0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 14px;
+  flex: 1;
+}
+.text-input:focus { outline: none; border-color: #4a6fff; }
+
+/* PLAYERS TABLE */
+.players-table { width: 100%; border-collapse: collapse; }
+.players-table th {
+  text-align: left;
+  padding: 10px 14px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #555;
+  border-bottom: 1px solid #1e1e2e;
+}
+.players-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid #111;
+  font-size: 15px;
+}
+.players-table tr:hover td { background: rgba(255,255,255,0.02); }
+.score-r1 { color: #4a9eff; }
+.score-r2 { color: #a78bfa; }
+.score-tot { color: #d4a853; font-weight: bold; font-size: 18px; }
+
+/* SETTINGS */
+.reset-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.reset-card {
+  background: #13111f;
+  border: 1px solid #1e1e2e;
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.reset-card-title { font-size: 16px; font-weight: 600; }
+.reset-card-desc { font-size: 13px; color: #555; }
+
+/* TOAST */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: #1e2e1e;
+  border: 1px solid #2a4a2a;
+  color: #86efac;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  z-index: 1000;
+  transition: opacity 0.3s;
+}
+.toast.error { background: #2e1e1e; border-color: #4a2a2a; color: #f87171; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="header">
+    <div class="header-title">🎮 Артём & Катя — Панель управления</div>
+    <div class="badge">Игроков: <span>{{ playerCount }}</span></div>
+    <div class="badge">
+      Р1: <span :class="'s-'+r1Status" class="status-pill">{{ r1Status }}</span>
+    </div>
+    <div class="badge">
+      Р2: <span :class="'s-'+r2Status" class="status-pill">{{ r2Status }}</span>
+    </div>
+    <div style="margin-left:auto">
+      <button class="btn btn-outline btn-sm" @click="emitLeaderboard">📊 Лидерборд</button>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab" :class="{active: tab==='r1'}" @click="tab='r1'">🎮 Раунд 1</div>
+    <div class="tab" :class="{active: tab==='r2'}" @click="tab='r2'">🎯 Раунд 2</div>
+    <div class="tab" :class="{active: tab==='editor'}" @click="tab='editor'; loadEditor()">✏️ Редактор</div>
+    <div class="tab" :class="{active: tab==='players'}" @click="tab='players'; loadPlayers()">👥 Игроки</div>
+    <div class="tab" :class="{active: tab==='settings'}" @click="tab='settings'">⚙️ Настройки</div>
+  </div>
+
+  <div class="content">
+
+    <!-- ROUND 1 TAB -->
+    <div v-if="tab==='r1'">
+      <div class="section-title">Выберите фото ({{ selectedPhoto ? 'Фото '+selectedPhoto+' выбрано' : 'не выбрано' }})</div>
+      <div class="photo-grid">
+        <div v-for="n in 10" :key="n"
+             class="photo-card"
+             :class="{selected: selectedPhoto===n}"
+             @click="selectedPhoto=n">
+          <img :src="'/r1img/'+n+'.png'" :alt="'Фото '+n" />
+          <div class="photo-answer-badge"
+               :class="'badge-'+r1Photos[n]?.correct">
+            {{ {artem:'А',katya:'К',both:'В'}[r1Photos[n]?.correct] || '?' }}
+          </div>
+          <div class="photo-card-num">{{ n }}</div>
+        </div>
+      </div>
+
+      <div class="r1-controls">
+        <button class="btn btn-primary" :disabled="!selectedPhoto" @click="r1Show">
+          👁 Показать
+        </button>
+        <button class="btn btn-purple" :disabled="r1Status !== 'showing'" @click="r1StartVoting">
+          🗳️ Голосовать
+        </button>
+        <button class="btn btn-warning" :disabled="r1Status !== 'voting'" @click="r1Reveal">
+          ✨ Раскрыть
+        </button>
+        <button class="btn btn-outline btn-sm" @click="r1Reset">↺ Сброс</button>
+      </div>
+
+      <div v-if="r1Status === 'voting' || r1Status === 'revealed'" class="vote-counts-display">
+        <span class="vc-artem">🧑 Артём: <b>{{ voteCounts.artem }}</b></span>
+        <span class="vc-katya">👩 Катя: <b>{{ voteCounts.katya }}</b></span>
+        <span class="vc-both">👫 Вдвоём: <b>{{ voteCounts.both }}</b></span>
+      </div>
+    </div>
+
+    <!-- ROUND 2 TAB -->
+    <div v-if="tab==='r2'">
+      <div class="section-title">Вопросы</div>
+      <div class="q2-list">
+        <div v-for="(q, idx) in questions" :key="q.id"
+             class="q2-item"
+             :class="{selected: selectedQIdx===idx}"
+             @click="selectedQIdx=idx; selectedReader=q.reader_tg_id||null">
+          <div class="q2-item-header">
+            <div class="q2-num">{{ q.id }}</div>
+            <div v-if="getReaderName(q.reader_tg_id)" class="q2-reader">
+              🎙️ {{ getReaderName(q.reader_tg_id) }}
+            </div>
+            <div v-else class="q2-reader" style="color:#555">— читатель не назначен</div>
+            <div class="q2-accepted">✓ {{ q.accepted.join(', ') }}</div>
+          </div>
+          <div class="q2-text">{{ q.text.slice(0, 120) }}...</div>
+        </div>
+      </div>
+
+      <div v-if="selectedQIdx !== null" class="card" style="margin-top: 16px;">
+        <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
+          <b>Вопрос {{ questions[selectedQIdx].id }}</b>
+          <span :class="'s-'+r2Status" class="status-pill">{{ r2Status }}</span>
+        </div>
+
+        <div class="reader-select-row">
+          <span style="color:#888; font-size:14px;">Читатель:</span>
+          <select class="select-input" v-model="selectedReader" @change="setReader">
+            <option :value="null">— не назначен —</option>
+            <option v-for="p in players" :key="p.tg_id" :value="parseInt(p.tg_id)">
+              {{ p.name }}
+            </option>
+          </select>
+        </div>
+
+        <div class="r1-controls" style="margin-top: 16px;">
+          <button class="btn btn-primary" :disabled="selectedQIdx===null" @click="r2Show">
+            📺 Показать
+          </button>
+          <button class="btn btn-outline" :disabled="r2Status !== 'showing'" @click="r2SendToReader">
+            📨 Отправить читателю
+          </button>
+          <button class="btn btn-success" :disabled="r2Status !== 'showing' && r2Status !== 'reading'" @click="r2OpenAnswers">
+            💬 Открыть ответы
+          </button>
+          <button class="btn btn-warning" :disabled="r2Status !== 'collecting'" @click="r2CloseAnswers">
+            🔒 Закрыть и показать
+          </button>
+          <button class="btn btn-outline btn-sm" @click="r2Reset">↺ Сброс</button>
+        </div>
+
+        <div v-if="r2Status === 'collecting'" style="margin-top: 12px; color: #86efac; font-size: 15px;">
+          💬 Получено ответов: <b>{{ answerCount }}</b>
+        </div>
+      </div>
+    </div>
+
+    <!-- EDITOR TAB -->
+    <div v-if="tab==='editor'">
+      <div class="section-title">Раунд 1 — правильные ответы</div>
+      <div class="editor-grid">
+        <div v-for="n in 10" :key="n" class="card" style="padding:14px">
+          <div style="display:flex; align-items:center; gap:10px; margin-bottom:10px;">
+            <img :src="'/r1img/'+n+'.png'" style="width:60px; height:45px; object-fit:cover; border-radius:6px;"/>
+            <b>Фото {{ n }}</b>
+          </div>
+          <div class="answer-choice-row">
+            <button v-for="opt in [{v:'artem',l:'🧑 Артём'},{v:'katya',l:'👩 Катя'},{v:'both',l:'👫 Вдвоём'}]"
+                    :key="opt.v"
+                    class="btn btn-sm btn-outline"
+                    :class="{'active-answer': r1Photos[n]?.correct === opt.v}"
+                    @click="setR1Answer(n, opt.v)">
+              {{ opt.l }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin-top: 24px;">Раунд 2 — принимаемые ответы</div>
+      <div v-for="(q, idx) in questions" :key="q.id" class="card">
+        <b>Вопрос {{ q.id }}</b>
+        <div class="accepted-tags">
+          <div v-for="ans in q.accepted" :key="ans" class="tag">
+            {{ ans }}
+            <span class="tag-remove" @click="removeAccepted(idx, ans)">×</span>
+          </div>
+        </div>
+        <div class="add-tag-row">
+          <input class="text-input" :placeholder="'Добавить ответ...'"
+                 v-model="newAccepted[idx]"
+                 @keyup.enter="addAccepted(idx)" />
+          <button class="btn btn-sm btn-success" @click="addAccepted(idx)">+</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PLAYERS TAB -->
+    <div v-if="tab==='players'">
+      <div class="section-title">{{ players.length }} игроков</div>
+      <div class="card" style="padding:0; overflow:hidden;">
+        <table class="players-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Имя</th>
+              <th>ID</th>
+              <th>Р1</th>
+              <th>Р2</th>
+              <th>Итого</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(p, i) in players" :key="p.tg_id">
+              <td style="color:#555">{{ i+1 }}</td>
+              <td>{{ p.name }}</td>
+              <td style="color:#444; font-size:12px;">{{ p.tg_id }}</td>
+              <td class="score-r1">{{ p.r1 }}</td>
+              <td class="score-r2">{{ p.r2 }}</td>
+              <td class="score-tot">{{ p.total }}</td>
+              <td>
+                <button class="btn btn-sm btn-danger" @click="deletePlayer(p.tg_id)">✕</button>
+              </td>
+            </tr>
+            <tr v-if="players.length === 0">
+              <td colspan="7" style="text-align:center; color:#444; padding: 32px;">
+                Игроков нет. Попросите участников написать /start боту.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div v-if="tab==='settings'">
+      <div class="section-title">Управление счётом</div>
+      <div class="reset-grid">
+        <div class="reset-card">
+          <div class="reset-card-title" style="color:#4a9eff">Сброс Раунда 1</div>
+          <div class="reset-card-desc">Обнуляет только очки за раунд 1</div>
+          <button class="btn btn-primary" @click="resetScores('r1')">Сбросить Р1</button>
+        </div>
+        <div class="reset-card">
+          <div class="reset-card-title" style="color:#a78bfa">Сброс Раунда 2</div>
+          <div class="reset-card-desc">Обнуляет только очки за раунд 2</div>
+          <button class="btn btn-purple" @click="resetScores('r2')">Сбросить Р2</button>
+        </div>
+        <div class="reset-card">
+          <div class="reset-card-title" style="color:#f87171">Полный сброс</div>
+          <div class="reset-card-desc">Сбрасывает ВСЕ очки и состояние игры</div>
+          <button class="btn btn-danger" @click="hardReset">💀 СБРОС ВСЕГО</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- TOAST -->
+  <div v-if="toast.show" class="toast" :class="{error: toast.error}">
+    {{ toast.msg }}
+  </div>
+</div>
+
+<script>
+const { createApp, ref, reactive, onMounted } = Vue;
+createApp({
+  setup() {
+    const tab = ref('r1');
+    const playerCount = ref(0);
+    const r1Status = ref('idle');
+    const r2Status = ref('idle');
+    const voteCounts = ref({ artem: 0, katya: 0, both: 0 });
+    const answerCount = ref(0);
+    const selectedPhoto = ref(null);
+    const selectedQIdx = ref(null);
+    const selectedReader = ref(null);
+    const r1Photos = ref({});
+    const questions = ref([]);
+    const players = ref([]);
+    const newAccepted = ref({});
+    const toast = reactive({ show: false, msg: '', error: false });
+
+    let toastTimer = null;
+    function showToast(msg, error = false) {
+      toast.msg = msg; toast.error = error; toast.show = true;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.show = false; }, 2500);
+    }
+
+    async function api(method, path, body) {
+      try {
+        const opts = { method, headers: {} };
+        if (body) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+        const r = await fetch('/api' + path, opts);
+        const d = await r.json();
+        if (d.error) { showToast(d.error, true); return null; }
+        return d;
+      } catch(e) { showToast('Ошибка сети', true); return null; }
+    }
+
+    async function loadR1Photos() {
+      const d = await api('GET', '/r1/photos');
+      if (d) r1Photos.value = d;
+    }
+
+    async function loadQuestions() {
+      const d = await api('GET', '/r2/questions');
+      if (d) {
+        questions.value = d;
+        d.forEach((_, i) => { if (!newAccepted.value[i]) newAccepted.value[i] = ''; });
+      }
+    }
+
+    async function loadPlayers() {
+      const d = await api('GET', '/players');
+      if (d) players.value = d;
+    }
+
+    async function loadEditor() {
+      await Promise.all([loadR1Photos(), loadQuestions(), loadPlayers()]);
+    }
+
+    onMounted(async () => {
+      await Promise.all([loadR1Photos(), loadQuestions(), loadPlayers()]);
+      const state = await api('GET', '/state');
+      if (state) {
+        playerCount.value = state.player_count;
+        r1Status.value = state.r1.status;
+        r2Status.value = state.r2.status;
+        voteCounts.value = state.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
+        answerCount.value = state.r2.answer_count || 0;
+      }
+    });
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+    socket.on('vote_update', d => { voteCounts.value = d; });
+    socket.on('player_count_update', d => {
+      playerCount.value = d.count;
+      loadPlayers();
+    });
+    socket.on('answer_received', d => { answerCount.value = d.count; });
+    socket.on('sync_state', d => {
+      playerCount.value = d.player_count;
+      r1Status.value = d.r1.status;
+      r2Status.value = d.r2.status;
+      voteCounts.value = d.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
+      answerCount.value = d.r2.answer_count || 0;
+    });
+    socket.on('show_photo', () => { r1Status.value = 'showing'; });
+    socket.on('voting_open', () => { r1Status.value = 'voting'; });
+    socket.on('photo_revealed', () => { r1Status.value = 'revealed'; });
+    socket.on('r1_reset', () => { r1Status.value = 'idle'; });
+    socket.on('show_question', () => { r2Status.value = 'showing'; });
+    socket.on('reading_started', () => { r2Status.value = 'reading'; });
+    socket.on('answers_open', () => { r2Status.value = 'collecting'; answerCount.value = 0; });
+    socket.on('question_result', () => { r2Status.value = 'revealed'; });
+    socket.on('r2_reset', () => { r2Status.value = 'idle'; });
+    socket.on('hard_reset', () => { r1Status.value = 'idle'; r2Status.value = 'idle'; loadPlayers(); });
+
+    function getReaderName(tg_id) {
+      if (!tg_id) return null;
+      const p = players.value.find(p => p.tg_id === String(tg_id));
+      return p ? p.name : null;
+    }
+
+    // R1 actions
+    async function r1Show() {
+      if (!selectedPhoto.value) return;
+      const d = await api('POST', `/r1/show/${selectedPhoto.value}`);
+      if (d) showToast(`Фото ${selectedPhoto.value} показано`);
+    }
+    async function r1StartVoting() {
+      const d = await api('POST', '/r1/start_voting');
+      if (d) showToast(`Голосование открыто (${d.sent} сообщений)`);
+    }
+    async function r1Reveal() {
+      const d = await api('POST', '/r1/reveal');
+      if (d) showToast('Ответ раскрыт!');
+    }
+    async function r1Reset() {
+      await api('POST', '/r1/reset');
+      showToast('Раунд 1 сброшен');
+    }
+
+    // R2 actions
+    async function r2Show() {
+      if (selectedQIdx.value === null) return;
+      const d = await api('POST', `/r2/show/${selectedQIdx.value}`);
+      if (d) showToast(`Вопрос ${questions.value[selectedQIdx.value].id} на экране`);
+    }
+    async function r2SendToReader() {
+      const d = await api('POST', '/r2/send_to_reader');
+      if (d) showToast('Текст отправлен читателю');
+    }
+    async function r2OpenAnswers() {
+      const d = await api('POST', '/r2/open_answers');
+      if (d) showToast('Ответы открыты!');
+    }
+    async function r2CloseAnswers() {
+      const d = await api('POST', '/r2/close_answers');
+      if (d) showToast('Ответы закрыты, результаты показаны');
+    }
+    async function r2Reset() {
+      await api('POST', '/r2/reset');
+      showToast('Раунд 2 сброшен');
+    }
+
+    // Reader assignment
+    async function setReader() {
+      if (selectedQIdx.value === null) return;
+      const d = await api('POST', '/r2/update_question', {
+        idx: selectedQIdx.value,
+        reader_tg_id: selectedReader.value,
+        set_reader: true
+      });
+      if (d) {
+        questions.value[selectedQIdx.value].reader_tg_id = selectedReader.value;
+        showToast('Читатель сохранён');
+      }
+    }
+
+    // Editor: R1 answer
+    async function setR1Answer(n, answer) {
+      const d = await api('POST', '/r1/set_answer', { photo_n: n, answer });
+      if (d) {
+        r1Photos.value[n] = { ...r1Photos.value[n], correct: answer };
+        showToast(`Фото ${n}: ${answer}`);
+      }
+    }
+
+    // Editor: R2 accepted
+    async function addAccepted(idx) {
+      const val = (newAccepted.value[idx] || '').trim();
+      if (!val) return;
+      const accepted = [...questions.value[idx].accepted, val];
+      const d = await api('POST', '/r2/update_question', { idx, accepted });
+      if (d) {
+        questions.value[idx].accepted = accepted;
+        newAccepted.value[idx] = '';
+      }
+    }
+    async function removeAccepted(idx, ans) {
+      const accepted = questions.value[idx].accepted.filter(a => a !== ans);
+      const d = await api('POST', '/r2/update_question', { idx, accepted });
+      if (d) questions.value[idx].accepted = accepted;
+    }
+
+    // Players
+    async function deletePlayer(tg_id) {
+      if (!confirm('Удалить игрока?')) return;
+      const d = await api('DELETE', `/players/${tg_id}`);
+      if (d) { players.value = players.value.filter(p => p.tg_id !== tg_id); showToast('Удалено'); }
+    }
+
+    // General
+    async function emitLeaderboard() {
+      await api('POST', '/leaderboard');
+      showToast('Лидерборд на экране');
+    }
+
+    async function resetScores(round) {
+      if (!confirm(`Сбросить очки за ${round === 'r1' ? 'Раунд 1' : 'Раунд 2'}?`)) return;
+      const d = await api('POST', `/reset_scores/${round}`);
+      if (d) { await loadPlayers(); showToast('Очки сброшены'); }
+    }
+
+    async function hardReset() {
+      if (!confirm('ПОЛНЫЙ СБРОС? Все очки и состояние игры будут удалены!')) return;
+      const d = await api('POST', '/hard_reset');
+      if (d) { await loadPlayers(); showToast('Полный сброс выполнен'); }
+    }
+
+    return {
+      tab, playerCount, r1Status, r2Status, voteCounts, answerCount,
+      selectedPhoto, selectedQIdx, selectedReader, r1Photos, questions, players, newAccepted, toast,
+      getReaderName, loadPlayers, loadEditor,
+      r1Show, r1StartVoting, r1Reveal, r1Reset,
+      r2Show, r2SendToReader, r2OpenAnswers, r2CloseAnswers, r2Reset, setReader,
+      setR1Answer, addAccepted, removeAccepted,
+      deletePlayer, emitLeaderboard, resetScores, hardReset
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

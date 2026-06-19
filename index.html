@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Игра — Артём и Катя</title>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #0a0a0f;
+  color: #f0e6d3;
+  font-family: 'Segoe UI', sans-serif;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#app { width: 100vw; height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+.view { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+
+/* LOBBY */
+.lobby {
+  flex-direction: column;
+  gap: 32px;
+  text-align: center;
+  background: radial-gradient(ellipse at center, #1a0a2e 0%, #0a0a0f 70%);
+}
+.lobby-title {
+  font-size: 72px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #d4a853, #f0c070, #d4a853);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 4px;
+}
+.lobby-subtitle { font-size: 28px; color: #8877aa; letter-spacing: 2px; }
+.player-count {
+  font-size: 22px;
+  color: #aaa;
+  padding: 12px 32px;
+  border: 1px solid #333;
+  border-radius: 40px;
+}
+.player-count span { color: #d4a853; font-weight: bold; font-size: 28px; }
+
+/* PHOTO VIEWS */
+.photo-view {
+  flex-direction: column;
+  gap: 0;
+  background: #050508;
+}
+.photo-frame {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  max-height: 80vh;
+}
+.photo-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  transition: all 0.5s ease;
+}
+.photo-label {
+  padding: 16px 0;
+  text-align: center;
+  font-size: 26px;
+  color: #888;
+  letter-spacing: 2px;
+}
+.photo-number {
+  font-size: 20px;
+  color: #d4a853;
+  font-weight: bold;
+}
+
+/* VOTE COUNTS */
+.vote-overlay {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.95) 0%, rgba(0,0,0,0) 100%);
+  padding: 24px 48px;
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+.vote-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 160px;
+}
+.vote-bar-wrap {
+  width: 100%;
+  height: 8px;
+  background: #222;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.vote-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+.bar-artem { background: #4a9eff; }
+.bar-katya { background: #ff6b9d; }
+.bar-both  { background: #a78bfa; }
+.vote-name { font-size: 16px; color: #ccc; }
+.vote-num  { font-size: 32px; font-weight: bold; }
+.vote-artem-color { color: #4a9eff; }
+.vote-katya-color { color: #ff6b9d; }
+.vote-both-color  { color: #a78bfa; }
+
+/* REVEALED */
+.revealed-view {
+  flex-direction: row;
+  gap: 0;
+  background: #050508;
+}
+.revealed-photo {
+  flex: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 24px;
+}
+.revealed-photo img {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+.revealed-info {
+  flex: 0.8;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 24px;
+  gap: 24px;
+  overflow-y: auto;
+}
+.correct-answer {
+  text-align: center;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(212,168,83,0.1);
+  border: 1px solid #d4a853;
+}
+.correct-answer-label { font-size: 14px; color: #888; letter-spacing: 2px; text-transform: uppercase; }
+.correct-answer-name  { font-size: 40px; font-weight: bold; color: #d4a853; }
+.results-list { display: flex; flex-direction: column; gap: 8px; flex: 1; overflow-y: auto; }
+.result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  font-size: 18px;
+}
+.result-item.ok  { border-left: 3px solid #4ade80; }
+.result-item.bad { border-left: 3px solid #f87171; }
+.result-icon { font-size: 22px; }
+.result-name { flex: 1; }
+.result-vote { font-size: 14px; color: #666; }
+.leaderboard-mini { border-top: 1px solid #222; padding-top: 16px; }
+.lb-title { font-size: 14px; color: #555; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 12px; }
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 18px;
+  border-bottom: 1px solid #1a1a1a;
+}
+.lb-rank { font-size: 14px; color: #555; width: 24px; text-align: center; }
+.lb-name { flex: 1; }
+.lb-score { font-weight: bold; color: #d4a853; }
+
+/* R2 VIEWS */
+.r2-showing {
+  flex-direction: column;
+  gap: 40px;
+  text-align: center;
+  padding: 60px;
+  background: radial-gradient(ellipse at center, #0d1a2e 0%, #050508 70%);
+}
+.q-num {
+  font-size: 100px;
+  font-weight: 900;
+  background: linear-gradient(135deg, #4a9eff, #a78bfa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.q-label { font-size: 32px; color: #aaa; letter-spacing: 3px; }
+.q-reader { font-size: 24px; color: #d4a853; }
+
+.r2-collecting {
+  flex-direction: column;
+  gap: 48px;
+  text-align: center;
+  background: radial-gradient(ellipse at center, #0a1a0a 0%, #050508 70%);
+}
+.collect-title { font-size: 52px; font-weight: 700; color: #4ade80; }
+.collect-sub { font-size: 28px; color: #666; }
+.collect-count { font-size: 96px; font-weight: 900; color: #4ade80; line-height: 1; }
+.collect-label { font-size: 20px; color: #444; letter-spacing: 2px; }
+
+.r2-revealed {
+  flex-direction: row;
+  gap: 0;
+  background: #050508;
+}
+.r2-answers-panel {
+  flex: 1;
+  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+}
+.correct-word {
+  text-align: center;
+  padding: 20px 32px;
+  background: rgba(74,222,128,0.08);
+  border: 1px solid #4ade80;
+  border-radius: 16px;
+}
+.correct-word-label { font-size: 14px; color: #555; letter-spacing: 2px; text-transform: uppercase; }
+.correct-word-value { font-size: 44px; font-weight: bold; color: #4ade80; }
+.r2-lb-panel {
+  flex: 0.6;
+  padding: 40px 24px;
+  border-left: 1px solid #1a1a1a;
+  overflow-y: auto;
+}
+
+/* LEADERBOARD FULL */
+.lb-full {
+  flex-direction: column;
+  padding: 60px 80px;
+  gap: 24px;
+  background: radial-gradient(ellipse at center, #1a0a2e 0%, #0a0a0f 70%);
+}
+.lb-full-title {
+  font-size: 48px;
+  font-weight: 700;
+  text-align: center;
+  background: linear-gradient(135deg, #d4a853, #f0c070);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.lb-full-table { display: flex; flex-direction: column; gap: 10px; }
+.lb-full-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 16px 28px;
+  border-radius: 14px;
+  font-size: 24px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid #1e1e1e;
+  transition: all 0.3s ease;
+}
+.lb-full-row.top1 { background: rgba(212,168,83,0.12); border-color: #d4a853; }
+.lb-full-row.top2 { background: rgba(192,192,192,0.08); border-color: #888; }
+.lb-full-row.top3 { background: rgba(180,120,60,0.08); border-color: #c06830; }
+.lb-rank-num { width: 40px; text-align: center; color: #555; font-size: 20px; }
+.lb-full-name { flex: 1; }
+.lb-col-head { display: flex; gap: 20px; }
+.lb-col { width: 80px; text-align: center; font-size: 18px; }
+.lb-col.r1 { color: #4a9eff; }
+.lb-col.r2 { color: #a78bfa; }
+.lb-col.tot { color: #d4a853; font-weight: bold; font-size: 26px; }
+
+/* TRANSITIONS */
+.fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+</style>
+</head>
+<body>
+<div id="app">
+  <transition name="fade" mode="out-in">
+
+    <!-- LOBBY -->
+    <div v-if="view === 'lobby'" class="view lobby" key="lobby">
+      <div class="lobby-title">АРТЁМ & КАТЯ</div>
+      <div class="lobby-subtitle">ИГРОВОЙ ВЕЧЕР</div>
+      <div class="player-count">Игроков: <span>{{ playerCount }}</span></div>
+    </div>
+
+    <!-- R1 SHOWING / VOTING -->
+    <div v-else-if="view === 'r1_showing' || view === 'r1_voting'" class="view photo-view" :key="'r1photo_' + currentPhoto">
+      <div class="photo-label">
+        <span class="photo-number">Фото {{ currentPhoto }}</span>
+        &nbsp;·&nbsp; Угадайте, кто это?
+      </div>
+      <div class="photo-frame">
+        <img :src="photoUrl" :alt="'Фото ' + currentPhoto" />
+      </div>
+      <div v-if="view === 'r1_voting'" class="vote-overlay">
+        <div class="vote-card">
+          <div class="vote-num vote-artem-color">{{ voteCounts.artem }}</div>
+          <div class="vote-bar-wrap"><div class="vote-bar bar-artem" :style="{width: votePercent('artem')+'%'}"></div></div>
+          <div class="vote-name">🧑 Артём</div>
+        </div>
+        <div class="vote-card">
+          <div class="vote-num vote-katya-color">{{ voteCounts.katya }}</div>
+          <div class="vote-bar-wrap"><div class="vote-bar bar-katya" :style="{width: votePercent('katya')+'%'}"></div></div>
+          <div class="vote-name">👩 Катя</div>
+        </div>
+        <div class="vote-card">
+          <div class="vote-num vote-both-color">{{ voteCounts.both }}</div>
+          <div class="vote-bar-wrap"><div class="vote-bar bar-both" :style="{width: votePercent('both')+'%'}"></div></div>
+          <div class="vote-name">👫 Вдвоём</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- R1 REVEALED -->
+    <div v-else-if="view === 'r1_revealed'" class="view revealed-view" key="r1_revealed">
+      <div class="revealed-photo">
+        <img :src="fullPhotoUrl" />
+      </div>
+      <div class="revealed-info">
+        <div class="correct-answer">
+          <div class="correct-answer-label">Правильный ответ</div>
+          <div class="correct-answer-name">{{ correctLabel }}</div>
+        </div>
+        <div class="results-list">
+          <div v-for="r in revealResults" :key="r.name"
+               class="result-item" :class="r.correct ? 'ok' : 'bad'">
+            <span class="result-icon">{{ r.correct ? '✅' : '❌' }}</span>
+            <span class="result-name">{{ r.name }}</span>
+            <span class="result-vote">{{ r.vote_label }}</span>
+          </div>
+        </div>
+        <div class="leaderboard-mini">
+          <div class="lb-title">Счёт</div>
+          <div v-for="(p, i) in leaderboard.slice(0,8)" :key="p.tg_id" class="lb-row">
+            <span class="lb-rank">{{ i+1 }}</span>
+            <span class="lb-name">{{ p.name }}</span>
+            <span class="lb-score">{{ p.total }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- R2 SHOWING -->
+    <div v-else-if="view === 'r2_showing' || view === 'r2_reading'" class="view r2-showing" :key="'r2q_' + currentQIdx">
+      <div class="q-num">{{ currentQNum }}</div>
+      <div class="q-label">РАУНД 2 · УГАДАЙ СЛОВО</div>
+      <div v-if="readerName" class="q-reader">🎙️ Читает: {{ readerName }}</div>
+      <div v-if="view === 'r2_reading'" style="font-size:22px; color:#555; margin-top: 16px;">Слушайте внимательно...</div>
+    </div>
+
+    <!-- R2 COLLECTING -->
+    <div v-else-if="view === 'r2_collecting'" class="view r2-collecting" key="r2_collecting">
+      <div class="collect-title">Пишите ответы!</div>
+      <div class="collect-sub">Откройте Telegram и напишите своё слово</div>
+      <div class="collect-count">{{ answerCount }}</div>
+      <div class="collect-label">ОТВЕТОВ ПОЛУЧЕНО</div>
+    </div>
+
+    <!-- R2 REVEALED -->
+    <div v-else-if="view === 'r2_revealed'" class="view r2-revealed" key="r2_revealed">
+      <div class="r2-answers-panel">
+        <div class="correct-word">
+          <div class="correct-word-label">Правильный ответ</div>
+          <div class="correct-word-value">{{ acceptedAnswers.join(' / ') }}</div>
+        </div>
+        <div class="results-list">
+          <div v-for="r in revealResults" :key="r.name"
+               class="result-item" :class="r.correct ? 'ok' : 'bad'">
+            <span class="result-icon">{{ r.correct ? '✅' : '❌' }}</span>
+            <span class="result-name">{{ r.name }}</span>
+            <span class="result-vote" style="font-size:16px; color:#777">«{{ r.answer }}»</span>
+          </div>
+        </div>
+      </div>
+      <div class="r2-lb-panel">
+        <div class="lb-title">Счёт</div>
+        <div v-for="(p, i) in leaderboard.slice(0,10)" :key="p.tg_id" class="lb-row">
+          <span class="lb-rank">{{ i+1 }}</span>
+          <span class="lb-name">{{ p.name }}</span>
+          <span class="lb-score">{{ p.total }}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- FULL LEADERBOARD -->
+    <div v-else-if="view === 'leaderboard'" class="view lb-full" key="leaderboard">
+      <div class="lb-full-title">🏆 Итоги</div>
+      <div class="lb-full-table">
+        <div v-for="(p, i) in leaderboard" :key="p.tg_id"
+             class="lb-full-row"
+             :class="i===0?'top1':i===1?'top2':i===2?'top3':''">
+          <div class="lb-rank-num">{{ i===0?'🥇':i===1?'🥈':i===2?'🥉':i+1 }}</div>
+          <div class="lb-full-name">{{ p.name }}</div>
+          <div class="lb-col-head">
+            <div class="lb-col r1">{{ p.r1 }}</div>
+            <div class="lb-col r2">{{ p.r2 }}</div>
+            <div class="lb-col tot">{{ p.total }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </transition>
+</div>
+
+<script>
+const { createApp, ref, computed } = Vue;
+createApp({
+  setup() {
+    const view = ref('lobby');
+    const playerCount = ref(0);
+    const currentPhoto = ref(null);
+    const photoUrl = ref('');
+    const fullPhotoUrl = ref('');
+    const voteCounts = ref({ artem: 0, katya: 0, both: 0 });
+    const correctLabel = ref('');
+    const revealResults = ref([]);
+    const leaderboard = ref([]);
+    const currentQIdx = ref(null);
+    const currentQNum = ref(null);
+    const readerName = ref(null);
+    const answerCount = ref(0);
+    const acceptedAnswers = ref([]);
+
+    const totalVotes = computed(() => voteCounts.value.artem + voteCounts.value.katya + voteCounts.value.both);
+    function votePercent(key) {
+      if (totalVotes.value === 0) return 0;
+      return Math.round((voteCounts.value[key] / totalVotes.value) * 100);
+    }
+
+    const socket = io({ transports: ['websocket', 'polling'] });
+
+    socket.on('sync_state', d => {
+      playerCount.value = d.player_count;
+      leaderboard.value = d.leaderboard || [];
+      answerCount.value = d.r2.answer_count || 0;
+
+      const r1s = d.r1.status;
+      const r2s = d.r2.status;
+      voteCounts.value = d.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
+      if (r1s === 'showing') view.value = 'r1_showing';
+      else if (r1s === 'voting') view.value = 'r1_voting';
+      else if (r1s === 'revealed') view.value = 'r1_revealed';
+      else if (r2s === 'showing') view.value = 'r2_showing';
+      else if (r2s === 'reading') view.value = 'r2_reading';
+      else if (r2s === 'collecting') view.value = 'r2_collecting';
+      else if (r2s === 'revealed') view.value = 'r2_revealed';
+      else view.value = 'lobby';
+    });
+
+    socket.on('player_count_update', d => { playerCount.value = d.count; });
+
+    socket.on('show_photo', d => {
+      currentPhoto.value = d.n;
+      photoUrl.value = d.url;
+      view.value = 'r1_showing';
+      voteCounts.value = { artem: 0, katya: 0, both: 0 };
+    });
+
+    socket.on('voting_open', d => {
+      view.value = 'r1_voting';
+      voteCounts.value = d.vote_counts || { artem: 0, katya: 0, both: 0 };
+    });
+
+    socket.on('vote_update', d => { voteCounts.value = d; });
+
+    socket.on('photo_revealed', d => {
+      fullPhotoUrl.value = d.full_url;
+      correctLabel.value = d.correct_label;
+      revealResults.value = d.results || [];
+      leaderboard.value = d.leaderboard || [];
+      view.value = 'r1_revealed';
+    });
+
+    socket.on('r1_reset', () => {
+      view.value = 'lobby';
+      currentPhoto.value = null;
+    });
+
+    socket.on('show_question', d => {
+      currentQIdx.value = d.idx;
+      currentQNum.value = d.q_num;
+      readerName.value = d.reader_name;
+      view.value = 'r2_showing';
+      answerCount.value = 0;
+    });
+
+    socket.on('reading_started', () => { view.value = 'r2_reading'; });
+
+    socket.on('answers_open', () => {
+      view.value = 'r2_collecting';
+      answerCount.value = 0;
+    });
+
+    socket.on('answer_received', d => { answerCount.value = d.count; });
+
+    socket.on('question_result', d => {
+      acceptedAnswers.value = d.accepted || [];
+      revealResults.value = d.results || [];
+      leaderboard.value = d.leaderboard || [];
+      view.value = 'r2_revealed';
+    });
+
+    socket.on('r2_reset', () => { view.value = 'lobby'; });
+
+    socket.on('leaderboard_show', d => {
+      leaderboard.value = d.players || [];
+      view.value = 'leaderboard';
+    });
+
+    socket.on('hard_reset', () => { view.value = 'lobby'; });
+
+    return {
+      view, playerCount, currentPhoto, photoUrl, fullPhotoUrl,
+      voteCounts, correctLabel, revealResults, leaderboard,
+      currentQIdx, currentQNum, readerName, answerCount, acceptedAnswers,
+      votePercent
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

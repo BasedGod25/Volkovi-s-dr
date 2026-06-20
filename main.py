@@ -22,6 +22,7 @@ DATA_DIR = "data"
 DATA_FILE = os.path.join(DATA_DIR, "data.json")
 MEDIA_DIR = "media"
 R1_DIR = "round1"
+R3_DIR = "round3"
 
 app = FastAPI()
 sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
@@ -33,9 +34,11 @@ dp = Dispatcher()
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(MEDIA_DIR, exist_ok=True)
 os.makedirs(R1_DIR, exist_ok=True)
+os.makedirs(R3_DIR, exist_ok=True)
 
 app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 app.mount("/r1img", StaticFiles(directory=R1_DIR), name="r1img")
+app.mount("/r3img", StaticFiles(directory=R3_DIR), name="r3img")
 
 # --- DATA ---
 
@@ -77,6 +80,15 @@ DEFAULT_DATA = {
                 "reader_tg_id": None
             }
         ]
+    },
+    "round3": {
+        "events": [
+            {"id": 1, "title": "Убийство Цезаря", "year": -44},
+            {"id": 2, "title": "Последний день Помпеи", "year": 79},
+            {"id": 3, "title": "Крещение Руси", "year": 988},
+            {"id": 4, "title": "Гибель Титаника", "year": 1912},
+            {"id": 5, "title": "Битва полов, Уимблдон", "year": 1973}
+        ]
     }
 }
 
@@ -100,6 +112,10 @@ class DataManager:
                         for i, q in enumerate(loaded["round2"].get("questions", [])):
                             if i < len(self.data["round2"]["questions"]):
                                 self.data["round2"]["questions"][i].update(q)
+                    if "round3" in loaded:
+                        for i, ev in enumerate(loaded["round3"].get("events", [])):
+                            if i < len(self.data["round3"]["events"]):
+                                self.data["round3"]["events"][i].update(ev)
                 except Exception as e:
                     print(f"Data load error: {e}")
 
@@ -112,12 +128,14 @@ class DataManager:
         for tg_id, p in self.data["players"].items():
             r1 = p.get("score_r1", 0)
             r2 = p.get("score_r2", 0)
+            r3 = p.get("score_r3", 0)
             players.append({
                 "tg_id": tg_id,
                 "name": p["name"],
                 "r1": r1,
                 "r2": r2,
-                "total": r1 + r2
+                "r3": r3,
+                "total": r1 + r2 + r3
             })
         return sorted(players, key=lambda x: x["total"], reverse=True)
 
@@ -126,6 +144,7 @@ db = DataManager()
 
 r1_state = {"current_photo": None, "votes": {}, "status": "idle"}
 r2_state = {"current_q_idx": None, "player_answers": {}, "status": "idle"}
+r3_state = {"current_event": None, "player_answers": {}, "status": "idle"}
 awaiting_name: dict = {}
 
 
@@ -148,6 +167,11 @@ def build_full_state():
             "current_q_idx": r2_state["current_q_idx"],
             "answer_count": len(r2_state["player_answers"]),
         },
+        "r3": {
+            "status": r3_state["status"],
+            "current_event": r3_state["current_event"],
+            "answer_count": len(r3_state["player_answers"]),
+        },
         "player_count": len(db.data["players"]),
         "leaderboard": db.get_leaderboard(),
     }
@@ -163,6 +187,14 @@ def get_r1_vote_counts():
 
 def all_player_tg_ids():
     return list(db.data["players"].keys())
+
+
+def score_year(guess: int, correct: int) -> int:
+    diff = abs(guess - correct)
+    if diff == 0: return 3
+    if diff <= 100: return 2
+    if diff <= 500: return 1
+    return 0
 
 
 def fuzzy_match(user_answer: str, accepted: list) -> bool:
@@ -219,7 +251,7 @@ if bot:
         if tg_id in awaiting_name:
             del awaiting_name[tg_id]
             if tg_id not in db.data["players"]:
-                db.data["players"][tg_id] = {"name": text, "score_r1": 0, "score_r2": 0}
+                db.data["players"][tg_id] = {"name": text, "score_r1": 0, "score_r2": 0, "score_r3": 0}
             else:
                 db.data["players"][tg_id]["name"] = text
             db.save()
@@ -235,6 +267,20 @@ if bot:
             count = len(r2_state["player_answers"])
             await sio.emit("answer_received", {"count": count})
             await message.answer("✅ Ответ принят!")
+            return
+
+        if r3_state["status"] == "collecting":
+            if tg_id not in db.data["players"]:
+                await message.answer("Сначала зарегистрируйся: /start")
+                return
+            try:
+                year = int(text.strip())
+                r3_state["player_answers"][tg_id] = year
+                count = len(r3_state["player_answers"])
+                await sio.emit("r3_answer_received", {"count": count})
+                await message.answer("✅ Год принят!")
+            except ValueError:
+                await message.answer("🗓️ Введи год числом, например: 1912 или -44")
 
 
 # --- API: STATE & PLAYERS ---
@@ -264,6 +310,7 @@ async def hard_reset():
     for p in db.data["players"].values():
         p["score_r1"] = 0
         p["score_r2"] = 0
+        p["score_r3"] = 0
     db.save()
     r1_state.update({"current_photo": None, "votes": {}, "status": "idle"})
     r2_state.update({"current_q_idx": None, "player_answers": {}, "status": "idle"})
@@ -272,9 +319,9 @@ async def hard_reset():
 
 @app.post("/api/reset_scores/{round_name}")
 async def reset_round_scores(round_name: str):
-    if round_name not in ("r1", "r2"):
+    if round_name not in ("r1", "r2", "r3"):
         return {"error": "Invalid round"}
-    key = "score_r1" if round_name == "r1" else "score_r2"
+    key = f"score_{round_name}"
     for p in db.data["players"].values():
         p[key] = 0
     db.save()
@@ -517,6 +564,94 @@ async def r2_reorder(body: ReorderQuestions):
         return {"error": "Invalid question IDs"}
     db.data["round2"]["questions"] = [id_to_q[qid] for qid in body.order]
     db.save()
+    return {"ok": True}
+
+
+# --- API: ROUND 3 ---
+
+@app.get("/api/r3/events")
+async def get_r3_events():
+    return db.data["round3"]["events"]
+
+@app.post("/api/r3/show/{n}")
+async def r3_show(n: int):
+    events = db.data["round3"]["events"]
+    if n < 1 or n > len(events):
+        return {"error": "Invalid event number"}
+    r3_state["current_event"] = n
+    r3_state["status"] = "showing"
+    r3_state["player_answers"] = {}
+    await sio.emit("r3_show", {"n": n, "url": f"/r3img/{n}.jpg"})
+    return {"ok": True}
+
+@app.post("/api/r3/open_answers")
+async def r3_open_answers():
+    if r3_state["current_event"] is None:
+        return {"error": "No event selected"}
+    r3_state["status"] = "collecting"
+    r3_state["player_answers"] = {}
+    await sio.emit("r3_answers_open", {"n": r3_state["current_event"]})
+    if bot:
+        for tg_id in all_player_tg_ids():
+            try:
+                await bot.send_message(int(tg_id), "🗓️ Угадай год события! Напиши число (можно отрицательное, например -44):")
+            except:
+                pass
+    return {"ok": True}
+
+@app.post("/api/r3/close_answers")
+async def r3_close_answers():
+    if r3_state["current_event"] is None:
+        return {"error": "No event selected"}
+    n = r3_state["current_event"]
+    event = db.data["round3"]["events"][n - 1]
+    correct_year = event["year"]
+    results = []
+    for tg_id, guess in r3_state["player_answers"].items():
+        player = db.data["players"].get(tg_id)
+        if not player:
+            continue
+        pts = score_year(guess, correct_year)
+        if pts > 0:
+            player["score_r3"] = player.get("score_r3", 0) + pts
+        results.append({
+            "name": player["name"],
+            "guess": guess,
+            "diff": abs(guess - correct_year),
+            "points": pts
+        })
+    results.sort(key=lambda x: x["diff"])
+    db.save()
+    r3_state["status"] = "revealed"
+    await sio.emit("r3_result", {
+        "n": n,
+        "title": event["title"],
+        "year": correct_year,
+        "results": results,
+        "leaderboard": db.get_leaderboard()
+    })
+    if bot:
+        for tg_id, guess in r3_state["player_answers"].items():
+            player = db.data["players"].get(tg_id)
+            if not player:
+                continue
+            pts = score_year(guess, correct_year)
+            diff = abs(guess - correct_year)
+            icon = "🥇" if pts == 3 else ("✅" if pts > 0 else "❌")
+            yr_fmt = f"-{abs(correct_year)}" if correct_year < 0 else str(correct_year)
+            try:
+                await bot.send_message(
+                    int(tg_id),
+                    f"{icon} Твой ответ: {guess}\nПравильный год: {yr_fmt}\nОтличие: {diff} лет → +{pts} очков"
+                )
+            except:
+                pass
+    return {"ok": True}
+
+@app.post("/api/r3/reset")
+async def r3_reset():
+    r3_state.update({"status": "idle", "current_event": None, "player_answers": {}})
+    await sio.emit("r3_reset", {})
     return {"ok": True}
 
 

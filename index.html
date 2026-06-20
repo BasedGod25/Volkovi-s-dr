@@ -282,6 +282,84 @@ body {
 .lb-col.r2 { color: #a78bfa; }
 .lb-col.tot { color: #d4a853; font-weight: bold; font-size: 26px; }
 
+/* R3 VIEWS */
+.r3-showing {
+  background: #050508;
+}
+.r3-image {
+  max-width: 100%;
+  max-height: 88vh;
+  object-fit: contain;
+  border-radius: 8px;
+}
+.r3-event-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 0; right: 0;
+  text-align: center;
+  font-size: 16px;
+  color: #2a2a3a;
+  letter-spacing: 2px;
+}
+.r3-collecting {
+  flex-direction: column;
+  gap: 48px;
+  text-align: center;
+  background: radial-gradient(ellipse at center, #1a0a2e 0%, #050508 70%);
+}
+.r3-revealed {
+  flex-direction: row;
+  background: #050508;
+}
+.r3-img-panel {
+  flex: 1.2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: hidden;
+}
+.r3-img-panel img {
+  max-width: 100%;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 12px;
+}
+.r3-info-panel {
+  flex: 0.8;
+  display: flex;
+  flex-direction: column;
+  padding: 32px 24px;
+  gap: 20px;
+  overflow-y: auto;
+}
+.year-reveal {
+  text-align: center;
+  padding: 20px;
+  border-radius: 16px;
+  background: rgba(212,168,83,0.1);
+  border: 1px solid #d4a853;
+}
+.year-label { font-size: 14px; color: #888; letter-spacing: 2px; text-transform: uppercase; }
+.year-value { font-size: 56px; font-weight: bold; color: #d4a853; line-height: 1.1; }
+.event-title-reveal { font-size: 18px; color: #888; margin-top: 6px; }
+.r3-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  background: rgba(255,255,255,0.04);
+  font-size: 16px;
+}
+.r3-result-item.pts3 { border-left: 3px solid #d4a853; }
+.r3-result-item.pts2 { border-left: 3px solid #4a9eff; }
+.r3-result-item.pts1 { border-left: 3px solid #a78bfa; }
+.r3-result-item.pts0 { border-left: 3px solid #2a2a3a; }
+.r3-guess { color: #aaa; font-size: 14px; }
+.r3-diff { color: #444; font-size: 12px; }
+.r3-pts { font-weight: bold; color: #d4a853; margin-left: auto; min-width: 28px; text-align: right; }
+
 /* TRANSITIONS */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.4s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
@@ -401,6 +479,52 @@ body {
       </div>
     </div>
 
+    <!-- R3 SHOWING -->
+    <div v-else-if="view === 'r3_showing'" class="view r3-showing" :key="'r3ev_'+r3EventN">
+      <img :src="r3ImageUrl" class="r3-image" />
+      <div class="r3-event-hint">РАУНД 3 · УГАДАЙ ГОД</div>
+    </div>
+
+    <!-- R3 COLLECTING -->
+    <div v-else-if="view === 'r3_collecting'" class="view r3-collecting" key="r3_collecting">
+      <div class="collect-title" style="color:#d4a853">Угадай год!</div>
+      <div class="collect-sub">Откройте Telegram и напишите год</div>
+      <div class="collect-count" style="color:#d4a853">{{ answerCount }}</div>
+      <div class="collect-label">ОТВЕТОВ ПОЛУЧЕНО</div>
+    </div>
+
+    <!-- R3 REVEALED -->
+    <div v-else-if="view === 'r3_revealed'" class="view r3-revealed" key="r3_revealed">
+      <div class="r3-img-panel">
+        <img :src="r3ImageUrl" />
+      </div>
+      <div class="r3-info-panel">
+        <div class="year-reveal">
+          <div class="year-label">Правильный год</div>
+          <div class="year-value">{{ fmtYear(r3Year) }}</div>
+          <div class="event-title-reveal">{{ r3Title }}</div>
+        </div>
+        <div class="results-list">
+          <div v-for="r in r3Results" :key="r.name"
+               class="r3-result-item" :class="'pts'+r.points">
+            <span class="result-icon">{{ r.points===3?'🥇':r.points===2?'🥈':r.points===1?'🥉':'💀' }}</span>
+            <span class="result-name">{{ r.name }}</span>
+            <span class="r3-guess">{{ r.guess }}</span>
+            <span class="r3-diff">±{{ r.diff }}л</span>
+            <span class="r3-pts">+{{ r.points }}</span>
+          </div>
+        </div>
+        <div class="leaderboard-mini">
+          <div class="lb-title">Счёт</div>
+          <div v-for="(p, i) in leaderboard.slice(0,8)" :key="p.tg_id" class="lb-row">
+            <span class="lb-rank">{{ i+1 }}</span>
+            <span class="lb-name">{{ p.name }}</span>
+            <span class="lb-score">{{ p.total }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- FULL LEADERBOARD -->
     <div v-else-if="view === 'leaderboard'" class="view lb-full" key="leaderboard">
       <div class="lb-full-title">🏆 Итоги</div>
@@ -413,6 +537,7 @@ body {
           <div class="lb-col-head">
             <div class="lb-col r1">{{ p.r1 }}</div>
             <div class="lb-col r2">{{ p.r2 }}</div>
+            <div class="lb-col" style="color:#d4a853;width:80px;text-align:center;font-size:18px;">{{ p.r3 || 0 }}</div>
             <div class="lb-col tot">{{ p.total }}</div>
           </div>
         </div>
@@ -440,6 +565,16 @@ createApp({
     const readerName = ref(null);
     const answerCount = ref(0);
     const acceptedAnswers = ref([]);
+    const r3EventN = ref(null);
+    const r3ImageUrl = ref('');
+    const r3Title = ref('');
+    const r3Year = ref(null);
+    const r3Results = ref([]);
+
+    function fmtYear(y) {
+      if (y === null || y === undefined) return '';
+      return y < 0 ? `${Math.abs(y)} до н.э.` : String(y);
+    }
 
     const totalVotes = computed(() => voteCounts.value.artem + voteCounts.value.katya + voteCounts.value.both);
     function votePercent(key) {
@@ -456,7 +591,10 @@ createApp({
 
       const r1s = d.r1.status;
       const r2s = d.r2.status;
+      const r3s = d.r3?.status;
+      const r3ev = d.r3?.current_event;
       voteCounts.value = d.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
+      if (r3ev) { r3EventN.value = r3ev; r3ImageUrl.value = `/r3img/${r3ev}.jpg`; }
       if (r1s === 'showing') view.value = 'r1_showing';
       else if (r1s === 'voting') view.value = 'r1_voting';
       else if (r1s === 'revealed') view.value = 'r1_revealed';
@@ -464,6 +602,9 @@ createApp({
       else if (r2s === 'reading') view.value = 'r2_reading';
       else if (r2s === 'collecting') view.value = 'r2_collecting';
       else if (r2s === 'revealed') view.value = 'r2_revealed';
+      else if (r3s === 'showing') view.value = 'r3_showing';
+      else if (r3s === 'collecting') view.value = 'r3_collecting';
+      else if (r3s === 'revealed') view.value = 'r3_revealed';
       else view.value = 'lobby';
     });
 
@@ -529,11 +670,32 @@ createApp({
 
     socket.on('hard_reset', () => { view.value = 'lobby'; });
 
+    socket.on('r3_show', d => {
+      r3EventN.value = d.n;
+      r3ImageUrl.value = d.url;
+      view.value = 'r3_showing';
+      answerCount.value = 0;
+    });
+    socket.on('r3_answers_open', () => {
+      view.value = 'r3_collecting';
+      answerCount.value = 0;
+    });
+    socket.on('r3_answer_received', d => { answerCount.value = d.count; });
+    socket.on('r3_result', d => {
+      r3Title.value = d.title;
+      r3Year.value = d.year;
+      r3Results.value = d.results || [];
+      leaderboard.value = d.leaderboard || [];
+      view.value = 'r3_revealed';
+    });
+    socket.on('r3_reset', () => { view.value = 'lobby'; });
+
     return {
       view, playerCount, currentPhoto, photoUrl, fullPhotoUrl,
       voteCounts, correctLabel, revealResults, leaderboard,
       currentQIdx, currentQNum, readerName, answerCount, acceptedAnswers,
-      votePercent
+      r3EventN, r3ImageUrl, r3Title, r3Year, r3Results,
+      votePercent, fmtYear
     };
   }
 }).mount('#app');

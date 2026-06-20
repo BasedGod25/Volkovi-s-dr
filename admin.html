@@ -274,7 +274,7 @@ body {
 .score-tot { color: #d4a853; font-weight: bold; font-size: 18px; }
 
 /* SETTINGS */
-.reset-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.reset-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .reset-card {
   background: #13111f;
   border: 1px solid #1e1e2e;
@@ -316,6 +316,9 @@ body {
     <div class="badge">
       Р2: <span :class="'s-'+r2Status" class="status-pill">{{ r2Status }}</span>
     </div>
+    <div class="badge">
+      Р3: <span :class="'s-'+r3Status" class="status-pill">{{ r3Status }}</span>
+    </div>
     <div style="margin-left:auto">
       <button class="btn btn-outline btn-sm" @click="emitLeaderboard">📊 Лидерборд</button>
     </div>
@@ -324,6 +327,7 @@ body {
   <div class="tabs">
     <div class="tab" :class="{active: tab==='r1'}" @click="tab='r1'">🎮 Раунд 1</div>
     <div class="tab" :class="{active: tab==='r2'}" @click="tab='r2'">🎯 Раунд 2</div>
+    <div class="tab" :class="{active: tab==='r3'}" @click="tab='r3'; loadR3Events()">🕰️ Раунд 3</div>
     <div class="tab" :class="{active: tab==='editor'}" @click="tab='editor'; loadEditor()">✏️ Редактор</div>
     <div class="tab" :class="{active: tab==='players'}" @click="tab='players'; loadPlayers()">👥 Игроки</div>
     <div class="tab" :class="{active: tab==='settings'}" @click="tab='settings'">⚙️ Настройки</div>
@@ -432,6 +436,49 @@ body {
       </div>
     </div>
 
+    <!-- ROUND 3 TAB -->
+    <div v-if="tab==='r3'">
+      <div class="section-title">Исторические события ({{ selectedEvent ? 'Событие '+selectedEvent+' выбрано' : 'не выбрано' }})</div>
+      <div class="photo-grid">
+        <div v-for="(ev, idx) in r3Events" :key="ev.id"
+             class="photo-card"
+             :class="{selected: selectedEvent===idx+1}"
+             @click="selectedEvent=idx+1"
+             style="height:auto">
+          <img :src="'/r3img/'+(idx+1)+'.jpg'" :alt="ev.title"
+               style="height:100px;"
+               @error="$event.target.style.background='#1a1a2a'" />
+          <div class="photo-card-num" style="padding:8px 6px; font-size:12px; line-height:1.5; text-align:left;">
+            <div style="color:#aaa">{{ idx+1 }}. {{ ev.title }}</div>
+            <div style="color:#d4a853; font-weight:bold;">{{ ev.year < 0 ? Math.abs(ev.year)+' до н.э.' : ev.year+' г.' }}</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="r1-controls">
+        <button class="btn btn-primary" :disabled="!selectedEvent" @click="r3Show">
+          👁 Показать
+        </button>
+        <button class="btn btn-success" :disabled="r3Status !== 'showing'" @click="r3OpenAnswers">
+          🗓️ Открыть ответы
+        </button>
+        <button class="btn btn-warning" :disabled="r3Status !== 'collecting'" @click="r3CloseAnswers">
+          🔒 Закрыть и показать
+        </button>
+        <button class="btn btn-outline btn-sm" @click="r3Reset">↺ Сброс</button>
+      </div>
+
+      <div v-if="r3Status === 'collecting'" style="margin-top: 12px; color: #d4a853; font-size: 15px;">
+        🗓️ Получено ответов: <b>{{ r3AnswerCount }}</b>
+      </div>
+
+      <div class="card" style="margin-top: 16px;">
+        <div style="font-size: 13px; color: #555;">
+          Скоринг: точный ответ → +3 &nbsp;|&nbsp; ±100 лет → +2 &nbsp;|&nbsp; ±500 лет → +1
+        </div>
+      </div>
+    </div>
+
     <!-- EDITOR TAB -->
     <div v-if="tab==='editor'">
       <div class="section-title">Раунд 1 — правильные ответы</div>
@@ -487,6 +534,7 @@ body {
               <th>ID</th>
               <th>Р1</th>
               <th>Р2</th>
+              <th>Р3</th>
               <th>Итого</th>
               <th></th>
             </tr>
@@ -498,6 +546,7 @@ body {
               <td style="color:#444; font-size:12px;">{{ p.tg_id }}</td>
               <td class="score-r1">{{ p.r1 }}</td>
               <td class="score-r2">{{ p.r2 }}</td>
+              <td style="color:#d4a853">{{ p.r3 || 0 }}</td>
               <td class="score-tot">{{ p.total }}</td>
               <td>
                 <button class="btn btn-sm btn-danger" @click="deletePlayer(p.tg_id)">✕</button>
@@ -528,6 +577,11 @@ body {
           <button class="btn btn-purple" @click="resetScores('r2')">Сбросить Р2</button>
         </div>
         <div class="reset-card">
+          <div class="reset-card-title" style="color:#d4a853">Сброс Раунда 3</div>
+          <div class="reset-card-desc">Обнуляет только очки за раунд 3</div>
+          <button class="btn btn-warning" @click="resetScores('r3')">Сбросить Р3</button>
+        </div>
+        <div class="reset-card" style="grid-column: 1 / -1;">
           <div class="reset-card-title" style="color:#f87171">Полный сброс</div>
           <div class="reset-card-desc">Сбрасывает ВСЕ очки и состояние игры</div>
           <button class="btn btn-danger" @click="hardReset">💀 СБРОС ВСЕГО</button>
@@ -563,6 +617,10 @@ createApp({
     const dragIdx = ref(null);
     const dragOverIdx = ref(null);
     const editQText = ref({});
+    const r3Status = ref('idle');
+    const r3AnswerCount = ref(0);
+    const r3Events = ref([]);
+    const selectedEvent = ref(null);
     const toast = reactive({ show: false, msg: '', error: false });
 
     let toastTimer = null;
@@ -604,12 +662,17 @@ createApp({
       if (d) players.value = d;
     }
 
+    async function loadR3Events() {
+      const d = await api('GET', '/r3/events');
+      if (d) r3Events.value = d;
+    }
+
     async function loadEditor() {
       await Promise.all([loadR1Photos(), loadQuestions(), loadPlayers()]);
     }
 
     onMounted(async () => {
-      await Promise.all([loadR1Photos(), loadQuestions(), loadPlayers()]);
+      await Promise.all([loadR1Photos(), loadQuestions(), loadPlayers(), loadR3Events()]);
       const state = await api('GET', '/state');
       if (state) {
         playerCount.value = state.player_count;
@@ -617,6 +680,10 @@ createApp({
         r2Status.value = state.r2.status;
         voteCounts.value = state.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
         answerCount.value = state.r2.answer_count || 0;
+        if (state.r3) {
+          r3Status.value = state.r3.status;
+          r3AnswerCount.value = state.r3.answer_count || 0;
+        }
       }
     });
 
@@ -633,6 +700,7 @@ createApp({
       r2Status.value = d.r2.status;
       voteCounts.value = d.r1.vote_counts || { artem: 0, katya: 0, both: 0 };
       answerCount.value = d.r2.answer_count || 0;
+      if (d.r3) { r3Status.value = d.r3.status; r3AnswerCount.value = d.r3.answer_count || 0; }
     });
     socket.on('show_photo', () => { r1Status.value = 'showing'; });
     socket.on('voting_open', () => { r1Status.value = 'voting'; });
@@ -643,7 +711,12 @@ createApp({
     socket.on('answers_open', () => { r2Status.value = 'collecting'; answerCount.value = 0; });
     socket.on('question_result', () => { r2Status.value = 'revealed'; });
     socket.on('r2_reset', () => { r2Status.value = 'idle'; });
-    socket.on('hard_reset', () => { r1Status.value = 'idle'; r2Status.value = 'idle'; loadPlayers(); });
+    socket.on('hard_reset', () => { r1Status.value = 'idle'; r2Status.value = 'idle'; r3Status.value = 'idle'; loadPlayers(); });
+    socket.on('r3_show', () => { r3Status.value = 'showing'; });
+    socket.on('r3_answers_open', () => { r3Status.value = 'collecting'; r3AnswerCount.value = 0; });
+    socket.on('r3_answer_received', d => { r3AnswerCount.value = d.count; });
+    socket.on('r3_result', () => { r3Status.value = 'revealed'; });
+    socket.on('r3_reset', () => { r3Status.value = 'idle'; });
 
     function getReaderName(tg_id) {
       if (!tg_id) return null;
@@ -733,6 +806,25 @@ createApp({
       showToast('Раунд 2 сброшен');
     }
 
+    // R3 actions
+    async function r3Show() {
+      if (!selectedEvent.value) return;
+      const d = await api('POST', `/r3/show/${selectedEvent.value}`);
+      if (d) showToast(`Событие ${selectedEvent.value} на экране`);
+    }
+    async function r3OpenAnswers() {
+      const d = await api('POST', '/r3/open_answers');
+      if (d) showToast('Ответы открыты!');
+    }
+    async function r3CloseAnswers() {
+      const d = await api('POST', '/r3/close_answers');
+      if (d) showToast('Результаты показаны');
+    }
+    async function r3Reset() {
+      await api('POST', '/r3/reset');
+      showToast('Раунд 3 сброшен');
+    }
+
     // Reader assignment
     async function setReader() {
       if (selectedQIdx.value === null) return;
@@ -799,14 +891,16 @@ createApp({
     }
 
     return {
-      tab, playerCount, r1Status, r2Status, voteCounts, answerCount,
+      tab, playerCount, r1Status, r2Status, r3Status, voteCounts, answerCount,
       selectedPhoto, selectedQIdx, selectedReader, r1Photos, questions, players, newAccepted, toast,
       dragIdx, dragOverIdx, editQText,
-      getReaderName, loadPlayers, loadEditor,
+      r3Status, r3AnswerCount, r3Events, selectedEvent,
+      getReaderName, loadPlayers, loadEditor, loadR3Events,
       r1Show, r1StartVoting, r1Reveal, r1Reset,
       r2Show, r2SendToReader, r2OpenAnswers, r2CloseAnswers, r2Reset, setReader,
       setR1Answer, addAccepted, removeAccepted, saveQText,
       onDragStart, onDragOver, onDragEnd, onDrop,
+      r3Show, r3OpenAnswers, r3CloseAnswers, r3Reset,
       deletePlayer, emitLeaderboard, resetScores, hardReset
     };
   }

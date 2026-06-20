@@ -3,7 +3,7 @@ import json
 import asyncio
 from typing import Optional, List
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from aiogram import Bot, Dispatcher, types, F
@@ -397,7 +397,7 @@ async def r2_show(idx: int):
             reader_name = db.data["players"][rid]["name"]
     await sio.emit("show_question", {
         "idx": idx,
-        "q_num": q["id"],
+        "q_num": idx + 1,
         "reader_name": reader_name
     })
     return {"ok": True}
@@ -485,8 +485,13 @@ async def r2_reset():
 class UpdateQuestion(BaseModel):
     idx: int
     accepted: Optional[List[str]] = None
+    text: Optional[str] = None
     reader_tg_id: Optional[int] = None
     set_reader: bool = False
+
+
+class ReorderQuestions(BaseModel):
+    order: List[int]
 
 
 @app.post("/api/r2/update_question")
@@ -496,8 +501,21 @@ async def r2_update_question(body: UpdateQuestion):
         return {"error": "Invalid index"}
     if body.accepted is not None:
         questions[body.idx]["accepted"] = body.accepted
+    if body.text is not None:
+        questions[body.idx]["text"] = body.text
     if body.set_reader:
         questions[body.idx]["reader_tg_id"] = body.reader_tg_id
+    db.save()
+    return {"ok": True}
+
+
+@app.post("/api/r2/reorder")
+async def r2_reorder(body: ReorderQuestions):
+    questions = db.data["round2"]["questions"]
+    id_to_q = {q["id"]: q for q in questions}
+    if set(body.order) != set(id_to_q.keys()):
+        return {"error": "Invalid question IDs"}
+    db.data["round2"]["questions"] = [id_to_q[qid] for qid in body.order]
     db.save()
     return {"ok": True}
 
@@ -505,6 +523,13 @@ async def r2_update_question(body: UpdateQuestion):
 # --- SERVE HTML ---
 
 app.mount("/socket.io", socket_app)
+
+@app.get("/qr.jpg")
+async def serve_qr():
+    if os.path.exists("qr.jpg"):
+        return FileResponse("qr.jpg", media_type="image/jpeg")
+    return {"error": "QR not found"}
+
 
 @app.get("/")
 async def index():

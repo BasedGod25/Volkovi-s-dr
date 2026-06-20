@@ -190,8 +190,13 @@ body {
 }
 .q2-item:hover { border-color: #4a6fff; }
 .q2-item.selected { border-color: #d4a853; background: rgba(212,168,83,0.05); }
+.q2-item.dragging { opacity: 0.3; }
+.q2-item.drag-over { border-color: #4a6fff !important; background: rgba(74,111,255,0.08); }
+.drag-handle { color: #2a2a3a; font-size: 20px; cursor: grab; user-select: none; margin-right: 4px; line-height: 1; }
+.drag-handle:hover { color: #555; }
 .q2-item-header { display: flex; align-items: center; gap: 12px; margin-bottom: 6px; }
 .q2-num { font-size: 20px; font-weight: 700; color: #d4a853; min-width: 32px; }
+.q-text-edit { width: 100%; height: 72px; resize: vertical; font-size: 12px; color: #777; line-height: 1.4; margin-bottom: 6px; }
 .q2-reader { font-size: 13px; color: #7c4dcc; }
 .q2-text { font-size: 13px; color: #555; line-height: 1.4; }
 .q2-accepted { font-size: 13px; color: #4ade80; margin-top: 4px; }
@@ -369,10 +374,16 @@ body {
       <div class="q2-list">
         <div v-for="(q, idx) in questions" :key="q.id"
              class="q2-item"
-             :class="{selected: selectedQIdx===idx}"
+             :class="{selected: selectedQIdx===idx, dragging: dragIdx===idx, 'drag-over': dragOverIdx===idx && dragIdx!==idx}"
+             draggable="true"
+             @dragstart="onDragStart($event, idx)"
+             @dragover.prevent="onDragOver(idx)"
+             @dragend="onDragEnd"
+             @drop.prevent="onDrop($event, idx)"
              @click="selectedQIdx=idx; selectedReader=q.reader_tg_id||null">
           <div class="q2-item-header">
-            <div class="q2-num">{{ q.id }}</div>
+            <span class="drag-handle" @click.stop>⠿</span>
+            <div class="q2-num">{{ idx+1 }}</div>
             <div v-if="getReaderName(q.reader_tg_id)" class="q2-reader">
               🎙️ {{ getReaderName(q.reader_tg_id) }}
             </div>
@@ -385,7 +396,7 @@ body {
 
       <div v-if="selectedQIdx !== null" class="card" style="margin-top: 16px;">
         <div style="display:flex; align-items:center; gap:12px; margin-bottom:16px;">
-          <b>Вопрос {{ questions[selectedQIdx].id }}</b>
+          <b>Вопрос {{ selectedQIdx+1 }}</b>
           <span :class="'s-'+r2Status" class="status-pill">{{ r2Status }}</span>
         </div>
 
@@ -442,9 +453,13 @@ body {
         </div>
       </div>
 
-      <div class="section-title" style="margin-top: 24px;">Раунд 2 — принимаемые ответы</div>
+      <div class="section-title" style="margin-top: 24px;">Раунд 2 — вопросы и принимаемые ответы</div>
       <div v-for="(q, idx) in questions" :key="q.id" class="card">
-        <b>Вопрос {{ q.id }}</b>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <b>Вопрос {{ idx+1 }}</b>
+          <button class="btn btn-sm btn-primary" @click="saveQText(idx)">Сохранить текст</button>
+        </div>
+        <textarea class="text-input q-text-edit" v-model="editQText[idx]" placeholder="Текст вопроса..."></textarea>
         <div class="accepted-tags">
           <div v-for="ans in q.accepted" :key="ans" class="tag">
             {{ ans }}
@@ -545,6 +560,9 @@ createApp({
     const questions = ref([]);
     const players = ref([]);
     const newAccepted = ref({});
+    const dragIdx = ref(null);
+    const dragOverIdx = ref(null);
+    const editQText = ref({});
     const toast = reactive({ show: false, msg: '', error: false });
 
     let toastTimer = null;
@@ -574,7 +592,10 @@ createApp({
       const d = await api('GET', '/r2/questions');
       if (d) {
         questions.value = d;
-        d.forEach((_, i) => { if (!newAccepted.value[i]) newAccepted.value[i] = ''; });
+        d.forEach((q, i) => {
+          if (!newAccepted.value[i]) newAccepted.value[i] = '';
+          editQText.value[i] = q.text;
+        });
       }
     }
 
@@ -630,6 +651,46 @@ createApp({
       return p ? p.name : null;
     }
 
+    // Drag & drop
+    function onDragStart(e, idx) {
+      dragIdx.value = idx;
+      e.dataTransfer.effectAllowed = 'move';
+    }
+    function onDragOver(idx) {
+      dragOverIdx.value = idx;
+    }
+    function onDragEnd() {
+      dragIdx.value = null;
+      dragOverIdx.value = null;
+    }
+    async function onDrop(e, toIdx) {
+      const fromIdx = dragIdx.value;
+      dragIdx.value = null;
+      dragOverIdx.value = null;
+      if (fromIdx === null || fromIdx === toIdx) return;
+      const arr = [...questions.value];
+      const [item] = arr.splice(fromIdx, 1);
+      arr.splice(toIdx, 0, item);
+      questions.value = arr;
+      const newEQT = {}, newNA = {};
+      arr.forEach((q, i) => { newEQT[i] = q.text; newNA[i] = ''; });
+      editQText.value = newEQT;
+      newAccepted.value = newNA;
+      const order = arr.map(q => q.id);
+      const d = await api('POST', '/r2/reorder', { order });
+      if (d) showToast('Порядок сохранён');
+    }
+
+    async function saveQText(idx) {
+      const text = (editQText.value[idx] || '').trim();
+      if (!text) return;
+      const d = await api('POST', '/r2/update_question', { idx, text });
+      if (d) {
+        questions.value[idx].text = text;
+        showToast('Текст сохранён');
+      }
+    }
+
     // R1 actions
     async function r1Show() {
       if (!selectedPhoto.value) return;
@@ -653,7 +714,7 @@ createApp({
     async function r2Show() {
       if (selectedQIdx.value === null) return;
       const d = await api('POST', `/r2/show/${selectedQIdx.value}`);
-      if (d) showToast(`Вопрос ${questions.value[selectedQIdx.value].id} на экране`);
+      if (d) showToast(`Вопрос ${selectedQIdx.value+1} на экране`);
     }
     async function r2SendToReader() {
       const d = await api('POST', '/r2/send_to_reader');
@@ -740,10 +801,12 @@ createApp({
     return {
       tab, playerCount, r1Status, r2Status, voteCounts, answerCount,
       selectedPhoto, selectedQIdx, selectedReader, r1Photos, questions, players, newAccepted, toast,
+      dragIdx, dragOverIdx, editQText,
       getReaderName, loadPlayers, loadEditor,
       r1Show, r1StartVoting, r1Reveal, r1Reset,
       r2Show, r2SendToReader, r2OpenAnswers, r2CloseAnswers, r2Reset, setReader,
-      setR1Answer, addAccepted, removeAccepted,
+      setR1Answer, addAccepted, removeAccepted, saveQText,
+      onDragStart, onDragOver, onDragEnd, onDrop,
       deletePlayer, emitLeaderboard, resetScores, hardReset
     };
   }
